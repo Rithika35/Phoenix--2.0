@@ -369,10 +369,11 @@ void loop() {
       }
       else {
         Serial.println("Looking for apogee");
+        //**SendMoteino 
       }
       
     }
-        //After apogee wait 45 seconds to turn of solenoid, and open actuator at 400 ft/121.92 meters
+    //After apogee wait 45 seconds to turn of solenoid, and open actuator at 400 ft/121.92 meters
     if(Apogee == 1 && liftoff==1 && lockout ==0){
       
       PrintLiftOffTime(count);
@@ -390,6 +391,8 @@ void loop() {
         InitiatorOn = 0;
         file.println();
         file.flush(); 
+        Serial.println("Initiator Off");
+        //**SendMoteino;
       }
       //turn off solenoid valve
       else if((TurnOffValve == 1) && (Draincount < AfterApogee)){
@@ -400,6 +403,8 @@ void loop() {
         DroneDeploy = 1;//Ready to search drone deployment altitude
         file.println();
         file.flush(); 
+        Serial.println("Pumps off");
+        //**SendMoteino
       }
       //deploy payload
       else if((incomingAlt < DroneDeployment) && (DroneDeploy ==1)){   
@@ -409,6 +414,8 @@ void loop() {
         TouchDown = 1;
         file.println();
         file.flush(); 
+        Serial.println("Payload Deployed");
+        //**SendMoteino
       }  
       //end program
       else if((incomingAlt < Landing) && (TouchDown ==1)){
@@ -417,9 +424,15 @@ void loop() {
         file.println();
         file.flush(); 
         while(1){};
-      }else
+        Serial.println("Touchdown");
+        //**SendMoteino
+      }
+      else
       file.println();
       file.flush(); 
+      Serial.println();
+      //**SendMoteino
+  
     }
   }
   }
