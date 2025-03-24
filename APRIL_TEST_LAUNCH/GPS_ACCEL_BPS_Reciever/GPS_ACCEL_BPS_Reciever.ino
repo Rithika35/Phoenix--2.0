@@ -14,9 +14,10 @@
 #define NUMREADINGS 7
 
 // Define UART pins for ESP32 to Moteino communication
-#define RX_PIN 32  // ESP32 RX pin, connects to Moteino TX
-#define TX_PIN 33  // ESP32 TX pin, connects to Moteino RX
-#define MOTEINO_BAUD 115200 
+#define MOTEINO_RX_PIN 32  // ESP32 RX pin, connects to Moteino TX
+#define MOTEINO_TX_PIN 33  // ESP32 TX pin, connects to Moteino RX
+#define MOTEINO_BAUD 115200 // Baud rate for Moteino communication
+#define MOTEINO_BUFFER 128   // Buffer size for Moteino communication
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
@@ -233,7 +234,7 @@ void setup() {
 
   Serial.println("Type 's' to start logging and 'f' to stop logging.");
 }
- 
+
 void loop() {
   HundrethSec = (count) % 10;
   TenthSec = (count/10) % 10;
@@ -246,7 +247,10 @@ void loop() {
   if (TimerFlag ) {
     TimerFlag = false; // Reset flag
     // Serial.print("T+");Serial.print(count/6000);Serial.print(":");Serial.print(TenSec);Serial.print(OneSec);Serial.print(":");Serial.print(TenthSec);Serial.print(HundrethSec);Serial.print(" ");
-    
+    // Check if GPS data is available and process it
+    while (gpsSerial.available() > 0) {
+      gps.encode(gpsSerial.read());  // Parse GPS data
+    }
     //Start or stop logging based on serial input
     if (Serial.available() > 0) {
       char command = Serial.read();
@@ -254,7 +258,7 @@ void loop() {
       logging = true;
         // Send message via ESP-NOW
         com.logStatus = 'Y';
-       
+    
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &com, sizeof(com));
       file = SD.open("/imu_data.csv", FILE_WRITE);
       if (file) {
@@ -327,11 +331,11 @@ void loop() {
         Serial.println("Lockout Period over");
         lockout = 0;
         //**SendMoteino
+      }
       else{
-        Serial.println("Lockout Period")
+        Serial.println("Lockout Period");
         //**SendMoteino
       }
-
     }
     //if lockout period is over startlooking for apogee
     if(liftoff == 1 && lockout == 0 && Apogee ==0 ){
@@ -432,7 +436,6 @@ void loop() {
       file.flush(); 
       Serial.println();
       //**SendMoteino
-  
     }
   }
   }
@@ -518,7 +521,7 @@ void PrintMeassurments() {
   }
 }
 
-//Funtion that will keep track of time after lift off
+//Function that will keep track of time after lift off
 void PrintLiftOffTime(int counter) {
   LiftOffcount = counter - LOcount;
   HundrethSec = LiftOffcount % 10;
@@ -529,3 +532,35 @@ void PrintLiftOffTime(int counter) {
   file.print(incomingcount/6000);file.print(":");file.print(iTenSec);file.print(iOneSec);
   file.print(".");file.print(iTenthSec);file.print(iHundrethSec);file.print(",");
 }
+
+
+void SendMoteino(float statusValue){
+
+  char buffer[128];
+ // Only format and send if GPS data is updated
+  if (gps.location.isUpdated()) {       //gpsSerial.available might send zeroed values
+  sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.6f,%.6f,%.2f,%.2f",
+          statusValue,              // int
+          incomingReadings.Altitude, // float
+          incomingReadings.Temp,     //  float
+          incomingReadings.velx,     //  float
+          incomingReadings.vely,     //  float
+          incomingReadings.velz,     //  float
+          gps.location.lat(),       // float (latitude)
+          gps.location.lng(),       // float (longitude)
+          gps.speed.kmph(),         // float (speed in km/h)
+          gps.altitude.meters()     // float (altitude in meters)
+  );
+}else {
+  sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f",
+          statusValue,              // int
+          incomingReadings.Altitude, //  float
+          incomingReadings.Temp,     //  float
+          incomingReadings.velx,     //  float
+          incomingReadings.vely,     //  float
+          incomingReadings.velz,     //  float 
+       );
+      }
+ MoteinoSerial.println(buffer);
+}
+
