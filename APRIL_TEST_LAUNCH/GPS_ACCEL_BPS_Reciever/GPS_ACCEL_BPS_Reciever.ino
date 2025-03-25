@@ -245,20 +245,22 @@ void loop() {
   iOneSec = (incomingcount/ 100) % 10;
   iTenSec = (incomingcount/ 1000)%6;
   if (TimerFlag ) {
+
     TimerFlag = false; // Reset flag
     // Serial.print("T+");Serial.print(count/6000);Serial.print(":");Serial.print(TenSec);Serial.print(OneSec);Serial.print(":");Serial.print(TenthSec);Serial.print(HundrethSec);Serial.print(" ");
-    // Check if GPS data is available and process it
-    while (gpsSerial.available() > 0) {
-      gps.encode(gpsSerial.read());  // Parse GPS data
-    }
     //Start or stop logging based on serial input
+
+    //**************************************************************** */
+     // ***Logging in SD Card***//
+     //**************************************************************** */
+
     if (Serial.available() > 0) {
       char command = Serial.read();
     if (command == 's' && !logging) {
       logging = true;
         // Send message via ESP-NOW
         com.logStatus = 'Y';
-    
+       
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &com, sizeof(com));
       file = SD.open("/imu_data.csv", FILE_WRITE);
       if (file) {
@@ -275,8 +277,6 @@ void loop() {
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &com, sizeof(com));
     }
     if(liftoff == 0){
-      //**SendMoteino;
-      Serial.println("Launch Pad");
       if (logging ) {
         if (file) {
           //Timestamp
@@ -292,12 +292,10 @@ void loop() {
     }
     //Check for liftoff
     if(count> LaunchPadTime && incomingAlt >= threshold && liftoff == 0 ) {
-      LOcount = count;
-      liftoff = 1;
-      Serial.println("LiftOff");
-      //**SendMoteino
       if (logging ) {
         if (file) {
+          LOcount = count;
+          liftoff = 1;
           file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");
           file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");file.print(",");
           file.print("Lift Off"); file.print(",");
@@ -308,7 +306,6 @@ void loop() {
     }
     //Lockout Period
     if ((liftoff == 1) && (lockout == 1) ){
-
       if (logging ) {
         if (file) {
           PrintLiftOffTime(count);
@@ -325,17 +322,7 @@ void loop() {
             file.flush(); 
           }
         }
-      }   
-
-      if( LiftOffcount > SuperSonicCount && isLockoutOver(incomingAlt)){
-        Serial.println("Lockout Period over");
-        lockout = 0;
-        //**SendMoteino
-      }
-      else{
-        Serial.println("Lockout Period");
-        //**SendMoteino
-      }
+      }    
     }
     //if lockout period is over startlooking for apogee
     if(liftoff == 1 && lockout == 0 && Apogee ==0 ){
@@ -362,22 +349,8 @@ void loop() {
           }
         }
       }
-
-      if(isApogee(incomingPres)){
-            Serial.println("apogee detected");
-            Apogee = 1;
-            TurnOffValve = 1;
-            Apogeecount = LiftOffcount;  
-            InitiatorOn = 1;
-            //**SendMoteino
-      }
-      else {
-        Serial.println("Looking for apogee");
-        //**SendMoteino 
-      }
-      
     }
-    //After apogee wait 45 seconds to turn of solenoid, and open actuator at 400 ft/121.92 meters
+        //After apogee wait 45 seconds to turn of solenoid, and open actuator at 400 ft/121.92 meters
     if(Apogee == 1 && liftoff==1 && lockout ==0){
       
       PrintLiftOffTime(count);
@@ -395,8 +368,6 @@ void loop() {
         InitiatorOn = 0;
         file.println();
         file.flush(); 
-        Serial.println("Initiator Off");
-        //**SendMoteino;
       }
       //turn off solenoid valve
       else if((TurnOffValve == 1) && (Draincount < AfterApogee)){
@@ -407,8 +378,6 @@ void loop() {
         DroneDeploy = 1;//Ready to search drone deployment altitude
         file.println();
         file.flush(); 
-        Serial.println("Pumps off");
-        //**SendMoteino
       }
       //deploy payload
       else if((incomingAlt < DroneDeployment) && (DroneDeploy ==1)){   
@@ -418,8 +387,6 @@ void loop() {
         TouchDown = 1;
         file.println();
         file.flush(); 
-        Serial.println("Payload Deployed");
-        //**SendMoteino
       }  
       //end program
       else if((incomingAlt < Landing) && (TouchDown ==1)){
@@ -428,21 +395,84 @@ void loop() {
         file.println();
         file.flush(); 
         while(1){};
-        Serial.println("Touchdown");
-        //**SendMoteino
-      }
-      else
+      }else
       file.println();
       file.flush(); 
-      Serial.println();
-      //**SendMoteino
     }
   }
   }
-  Serial.println("Altitude:");
-  Serial.print(incomingReadings.Altitude);
-  Serial.println("Temp:");
-  Serial.print(incomingReadings.Temp);
+
+  //********************************************************************* */
+ //***Telemetry and Print***//
+ //********************************************************************** */
+
+ // Debug timer
+  Serial.print("Timer count: "); Serial.println(count);
+
+ // Flight state logic with conditional prints and SendMoteino
+  if (liftoff == 0) {
+    Serial.println("Launch Pad");
+    SendMoteino(0);
+  }
+
+  if (count > LaunchPadTime && incomingReadings.Altitude >= threshold && liftoff == 0) {
+    LOcount = count;
+    liftoff = 1;
+    Serial.println("LiftOff");
+    SendMoteino(1);
+  }
+
+  if (liftoff == 1 && lockout == 1) {
+    LiftOffcount = count - LOcount;
+    if (LiftOffcount > SuperSonicCount && isLockoutOver(incomingReadings.Altitude)) {
+      Serial.println("Lockout Period over");
+      lockout = 0;
+      SendMoteino(2);
+    } else {
+      Serial.println("Lockout Period");
+      SendMoteino(3);
+    }
+  }
+
+  if (liftoff == 1 && lockout == 0 && Apogee == 0) {
+    if (isApogee(incomingReadings.Pres)) {
+      Serial.println("Apogee detected");
+      Apogee = 1;
+      TurnOffValve = 1;
+      Apogeecount = LiftOffcount;
+      InitiatorOn = 1;
+      SendMoteino(4);
+    } else {
+      Serial.println("Looking for Apogee");
+      SendMoteino(5);
+    }
+  }
+
+  if (Apogee == 1 && liftoff == 1 && lockout == 0) {
+    AfterApogee = LiftOffcount - Apogeecount;
+    if (InitiatorCount < AfterApogee && InitiatorOn == 1) {
+      Serial.println("Initiator Off");
+      InitiatorOn = 0;
+      SendMoteino(6);
+    } else if (TurnOffValve == 1 && Draincount < AfterApogee) {
+      Serial.println("Pumps off");
+      TurnOffValve = 0;
+      DroneDeploy = 1;
+      SendMoteino(7);
+    } else if (incomingReadings.Altitude < DroneDeployment && DroneDeploy == 1) {
+      Serial.println("Payload Deployed");
+      DroneDeploy = 0;
+      TouchDown = 1;
+      SendMoteino(8);
+    } else if (incomingReadings.Altitude < Landing && TouchDown == 1) {
+      Serial.println("Touchdown");
+      TouchDown = 0;
+      SendMoteino(9);
+    } else {
+      Serial.println();  // Empty line for descent phase
+      SendMoteino(10);   // Generic descent status
+    }
+  }
 }
 
 //function to check if apogee has been reach using pressure
@@ -536,7 +566,7 @@ void PrintLiftOffTime(int counter) {
 
 void SendMoteino(float statusValue){
 
-  char buffer[128];
+  char buffer[MOTEINO_BUFFER]; 
  // Only format and send if GPS data is updated
   if (gps.location.isUpdated()) {       //gpsSerial.available might send zeroed values
   sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.6f,%.6f,%.2f,%.2f",
@@ -558,8 +588,8 @@ void SendMoteino(float statusValue){
           incomingReadings.Temp,     //  float
           incomingReadings.velx,     //  float
           incomingReadings.vely,     //  float
-          incomingReadings.velz,     //  float 
-       );
+          incomingReadings.velz    //  float 
+        );
       }
  MoteinoSerial.println(buffer);
 }
