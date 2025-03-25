@@ -4,19 +4,20 @@
 #include <SPIFlash.h>
 
 // Moteino configuration
-#define NODEID        2    // Unique ID of this node
-#define NETWORKID     100  // Network ID
-#define GATEWAYID     1    // ID of the receiver/gateway Moteino
-#define FREQUENCY     RF69_915MHZ  // Match frequency to your region
-#define ENCRYPTKEY    "TOPSECRETPASSWRD" // 16 bytes encryption key
-#define IS_RFM69HW_HCW  // Uncomment if using RFM69HW/HCW
-#define LED           9   // Moteino LED pin
-#define ENABLE_ATC    // Comment out to disable ATC
-#define ATC_RSSI      -75  // Target RSSI for ATC (default is -80)
+#define NODEID        2
+#define NETWORKID     100
+#define GATEWAYID     1
+#define FREQUENCY     RF69_915MHZ
+#define ENCRYPTKEY    "TOPSECRETPASSWRD"
+#define IS_RFM69HW_HCW
+#define LED           9
+#define ENABLE_ATC
+#define ATC_RSSI      -75
 
-// Serial configuration for ESP32 communication
+// Serial configuration
 #define SERIAL_BAUD   115200
-#define MAX_BUFFER    120  // Buffer size for incoming ESP32 data
+#define MAX_BUFFER    120
+#define RFM69_MAX_PAYLOAD 61  // RFM69 max data payload (after headers)
 
 // Initialize radio
 #ifdef ENABLE_ATC
@@ -25,55 +26,42 @@
   RFM69 radio;
 #endif
 
-SPIFlash flash(8, 0xEF30); // Flash chip on Moteino
+SPIFlash flash(8, 0xEF30);
 
 // Variables for parsing ESP32 data
-char buffer[MAX_BUFFER];
 int statusValue;
 float altitude, temp, velx, vely, velz;
 float lat, lng, speed, altitude_m;
 bool gpsAvailable = false;
 
 void setup() {
-  // Initialize LED
   pinMode(LED, OUTPUT);
-  
-  // Initialize serial communication with ESP32
   Serial.begin(SERIAL_BAUD);
   
-  // Initialize radio
   radio.initialize(FREQUENCY, NODEID, NETWORKID);
-  
 #ifdef IS_RFM69HW_HCW
-  radio.setHighPower(); // Only for RFM69HW/HCW
+  radio.setHighPower();
 #endif
-  
 #ifdef ENABLE_ATC
   radio.enableAutoPower(ATC_RSSI);
-  Serial.println("ATC Enabled - Auto Transmission Control");
+  Serial.println("ATC Enabled");
 #endif
-  
   radio.encrypt(ENCRYPTKEY);
   
-  // Initialize flash memory if available
   if (flash.initialize()) {
     flash.sleep();
   }
   
-  // Signal setup complete
   blinkLED(3);
-  
   Serial.println("Moteino Node ready for ESP32 data");
 }
 
 void loop() {
-  // Check for incoming serial data from ESP32
   if (Serial.available() > 0) {
-    // Read the incoming line into buffer
+    char buffer[MAX_BUFFER];
     int len = Serial.readBytesUntil('\n', buffer, MAX_BUFFER - 1);
-    buffer[len] = '\0';  // Null-terminate the string
+    buffer[len] = '\0';
     
-    // Blink LED to indicate data received
     digitalWrite(LED, HIGH);
     
     // Parse the incoming data
@@ -108,19 +96,56 @@ void loop() {
       Serial.println("Invalid data format");
     }
     
-    // Optional: Forward data via RFM69 to gateway
-    if (radio.sendWithRetry(GATEWAYID, buffer, strlen(buffer), 3, 50)) {
-      Serial.println("Data sent to Gateway");
+    // Send data via RFM69
+    if (len <= RFM69_MAX_PAYLOAD) {
+      // Single packet (no GPS, fits in 61 bytes)
+      if (radio.sendWithRetry(GATEWAYID, buffer, len, 3, 50)) {
+        Serial.println("Single packet sent to Gateway");
+      } else {
+        Serial.println("Single packet send failed");
+      }
     } else {
-      Serial.println("Failed to send to Gateway");
+      // Split into two packets (with GPS, exceeds 61 bytes)
+      char packet1[RFM69_MAX_PAYLOAD + 1];
+      char packet2[RFM69_MAX_PAYLOAD + 1];
+      
+      // Find the 5th comma to split after velz
+      int commaCount = 0;
+      int splitPos = 0;
+      for (int i = 0; i < len && commaCount < 6; i++) {
+        if (buffer[i] == ',') commaCount++;
+        if (commaCount == 5) {
+          splitPos = i + 1;  // After 5th comma (before lat)
+          break;
+        }
+      }
+      
+      // Packet 1: statusValue to velz
+      strncpy(packet1, buffer, splitPos);
+      packet1[splitPos] = '\0';
+      
+      // Packet 2: lat to altitude_m
+      strcpy(packet2, buffer + splitPos);
+      
+      // Send Packet 1
+      if (radio.sendWithRetry(GATEWAYID, packet1, strlen(packet1), 3, 50)) {
+        Serial.println("Packet 1 sent to Gateway");
+      } else {
+        Serial.println("Packet 1 send failed");
+      }
+      
+      // Send Packet 2
+      if (radio.sendWithRetry(GATEWAYID, packet2, strlen(packet2), 3, 50)) {
+        Serial.println("Packet 2 sent to Gateway");
+      } else {
+        Serial.println("Packet 2 send failed");
+      }
     }
     
-    // Turn off LED after processing
     digitalWrite(LED, LOW);
   }
 }
 
-// Helper function to blink LED
 void blinkLED(int times) {
   for (int i = 0; i < times; i++) {
     digitalWrite(LED, HIGH);
