@@ -16,7 +16,9 @@
 
 
 // REPLACE WITH THE MAC Address of your receiver 
-uint8_t broadcastAddress[] = {0x08, 0xd1, 0xf9, 0xc8, 0xe2, 0x94};
+// 48:e7:29:b4:ef:04  on 03/26/2025
+uint8_t broadcastAddress[] = {0x48, 0xe7, 0x29, 0xb4, 0xef, 0x04};
+
 
 // Define variables to be sent
 char cmd;
@@ -25,6 +27,7 @@ char cmd;
 float incomingTemp;
 float incomingHum;
 float incomingPres;
+char incoming_LogStatus;
 
 // Variable to store if sending data was successful
 String success;
@@ -47,6 +50,7 @@ typedef struct struct_message {
   float vely;
   float velz;
   char command;
+  char logStatus;
 } struct_message;
 
 // Create a struct_message called BME280Readings to hold sensor readings
@@ -54,6 +58,7 @@ struct_message com;
 
 // Create a struct_message to hold incoming sensor readings
 struct_message incomingReadings;
+
 
 esp_now_peer_info_t peerInfo;
 
@@ -70,10 +75,9 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 }
 
 // Callback when data is received
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+void OnDataRecv(const uint32_t * mac, const uint32_t *incomingData, int len) {
   memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
-  Serial.print("Bytes received: ");
-  Serial.println(len);
+  incoming_LogStatus = incomingReadings.logStatus; //reads logging status
 }
  
 void setup() {
@@ -109,13 +113,16 @@ void setup() {
 }
  
 void loop() {
+
   cmd = Serial.read();
   // Set values to send
   com.command = cmd;
 
   // Send message via ESP-NOW
   esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &com, sizeof(com));
-   
+  
+  Serial.print("Log Status:");
+  Serial.println(incoming_LogStatus);
   if (result == ESP_OK) {
     Serial.println("Sent with success");
   }
@@ -125,4 +132,3 @@ void loop() {
   Serial.println(cmd);
   delay(1000);
 }
-

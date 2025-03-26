@@ -3,39 +3,27 @@
 #include <SPI.h>
 #include <SD.h>
 #include <Wire.h>
-#include <TinyGPSPlus.h>
-
-#include <HardwareSerial.h>
+#include <TinyGPS++.h>
 
 // Define the RX and TX pins for Serial 2
 #define RXD0 16
 #define TXD2 17
 #define GPS_BAUD 9600
 #define NUMREADINGS 7
-
-// Define UART pins for ESP32 to Moteino communication
-#define MOTEINO_RX_PIN 32  // ESP32 RX pin, connects to Moteino TX
-#define MOTEINO_TX_PIN 33  // ESP32 TX pin, connects to Moteino RX
-#define MOTEINO_BAUD 115200 // Baud rate for Moteino communication
-#define MOTEINO_BUFFER 128   // Buffer size for Moteino communication
-
 // The TinyGPS++ object
 TinyGPSPlus gps;
 
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(2);
-HardwareSerial MoteinoSerial(1);  // Using UART1
-
-unsigned long lastMoteinoUpdate = 0;
-const unsigned long MOTEINO_UPDATE_INTERVAL = 500; // Send to Moteino every 0.5 second
 
 const int CS_PIN = 5; // SD card chip select
 File file;
 
 bool logging = false; // Flag to control logging
 
-// REPLACE WITH THE MAC Address of your receiver d8:13:2a:7d:7f:dc
-uint8_t broadcastAddress[] = {0xe4, 0x65, 0xb8, 0xda, 0x13, 0x48};
+// REPLACE WITH THE MAC Address of your receiver 
+// 08:d1:f9:c8:e2:94 // 03/26/2025
+uint8_t broadcastAddress[] = {0x08, 0xd1, 0xf9, 0xc8, 0xe2, 0x94};
 
 //Liftoff
 float threshold = 70.0; // Altitude in ft needed to detect lift off
@@ -184,13 +172,9 @@ void setup() {
 
   delay(3000);//delay 3 seconds to allow time 
 
-  // Start GPS with the defined RX and TX pins and a baud rate of 9600
+  // Start Serial 2 with the defined RX and TX pins and a baud rate of 9600
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD0, TXD2);
-  Serial.println("GPS at Serial 2 started at 9600 baud rate");
-
-  // Start Moteino Serial with updated baud rate
-  MoteinoSerial.begin(MOTEINO_BAUD, SERIAL_8N1, MOTEINO_RX_PIN, MOTEINO_TX_PIN);
-  Serial.println("Moteino communication initialized");
+  Serial.println("Serial 2 started at 9600 baud rate");
 
   // Initialize the SD card
   if (!SD.begin(CS_PIN)) {
@@ -199,7 +183,7 @@ void setup() {
   }
   Serial.println("SD card initialized.");
 
- //Timer ISR Configuration
+//Timer ISR Configuration
   Serial.println("start timer ");
   timer = timerBegin(0, 80, true);  // timer 0, MWDT clock period = 12.5 ns * TIMGn_Tx_WDT_CLK_PRESCALE -> 12.5 ns * 80 -> 1000 ns = 1 us, countUp
   timerAttachInterrupt(timer, &onTimer, true); // edge (not level) triggered 
@@ -234,7 +218,7 @@ void setup() {
 
   Serial.println("Type 's' to start logging and 'f' to stop logging.");
 }
-
+ 
 void loop() {
   HundrethSec = (count) % 10;
   TenthSec = (count/10) % 10;
@@ -245,17 +229,12 @@ void loop() {
   iOneSec = (incomingcount/ 100) % 10;
   iTenSec = (incomingcount/ 1000)%6;
   if (TimerFlag ) {
-
     TimerFlag = false; // Reset flag
     // Serial.print("T+");Serial.print(count/6000);Serial.print(":");Serial.print(TenSec);Serial.print(OneSec);Serial.print(":");Serial.print(TenthSec);Serial.print(HundrethSec);Serial.print(" ");
+    Serial.println(incomingAlt);
     //Start or stop logging based on serial input
-
-    //**************************************************************** */
-     // ***Logging in SD Card***//
-     //**************************************************************** */
-
-    if (Serial.available() > 0) {
-      char command = Serial.read();
+    // if (Serial.available() > 0) {
+    //   char command = Serial.read();
     if (command == 's' && !logging) {
       logging = true;
         // Send message via ESP-NOW
@@ -400,81 +379,8 @@ void loop() {
       file.flush(); 
     }
   }
-  }
-
-  //********************************************************************* */
- //***Telemetry and Print***//
- //********************************************************************** */
-
- // Debug timer
-  Serial.print("Timer count: "); Serial.println(count);
-
- // Flight state logic with conditional prints and SendMoteino
-  if (liftoff == 0) {
-    Serial.println("Launch Pad");
-    SendMoteino(0);
-  }
-
-  if (count > LaunchPadTime && incomingReadings.Altitude >= threshold && liftoff == 0) {
-    LOcount = count;
-    liftoff = 1;
-    Serial.println("LiftOff");
-    SendMoteino(1);
-  }
-
-  if (liftoff == 1 && lockout == 1) {
-    LiftOffcount = count - LOcount;
-    if (LiftOffcount > SuperSonicCount && isLockoutOver(incomingReadings.Altitude)) {
-      Serial.println("Lockout Period over");
-      lockout = 0;
-      SendMoteino(2);
-    } else {
-      Serial.println("Lockout Period");
-      SendMoteino(3);
-    }
-  }
-
-  if (liftoff == 1 && lockout == 0 && Apogee == 0) {
-    if (isApogee(incomingReadings.Pres)) {
-      Serial.println("Apogee detected");
-      Apogee = 1;
-      TurnOffValve = 1;
-      Apogeecount = LiftOffcount;
-      InitiatorOn = 1;
-      SendMoteino(4);
-    } else {
-      Serial.println("Looking for Apogee");
-      SendMoteino(5);
-    }
-  }
-
-  if (Apogee == 1 && liftoff == 1 && lockout == 0) {
-    AfterApogee = LiftOffcount - Apogeecount;
-    if (InitiatorCount < AfterApogee && InitiatorOn == 1) {
-      Serial.println("Initiator Off");
-      InitiatorOn = 0;
-      SendMoteino(6);
-    } else if (TurnOffValve == 1 && Draincount < AfterApogee) {
-      Serial.println("Pumps off");
-      TurnOffValve = 0;
-      DroneDeploy = 1;
-      SendMoteino(7);
-    } else if (incomingReadings.Altitude < DroneDeployment && DroneDeploy == 1) {
-      Serial.println("Payload Deployed");
-      DroneDeploy = 0;
-      TouchDown = 1;
-      SendMoteino(8);
-    } else if (incomingReadings.Altitude < Landing && TouchDown == 1) {
-      Serial.println("Touchdown");
-      TouchDown = 0;
-      SendMoteino(9);
-    } else {
-      Serial.println();  // Empty line for descent phase
-      SendMoteino(10);   // Generic descent status
-    }
-  }
+ // }
 }
-
 //function to check if apogee has been reach using pressure
 bool isApogee(float Pressure){
   static int consecutiveCount = 0; 
@@ -551,7 +457,7 @@ void PrintMeassurments() {
   }
 }
 
-//Function that will keep track of time after lift off
+//Funtion that will keep track of time after lift off
 void PrintLiftOffTime(int counter) {
   LiftOffcount = counter - LOcount;
   HundrethSec = LiftOffcount % 10;
@@ -562,35 +468,3 @@ void PrintLiftOffTime(int counter) {
   file.print(incomingcount/6000);file.print(":");file.print(iTenSec);file.print(iOneSec);
   file.print(".");file.print(iTenthSec);file.print(iHundrethSec);file.print(",");
 }
-
-
-void SendMoteino(float statusValue){
-
-  char buffer[MOTEINO_BUFFER]; 
- // Only format and send if GPS data is updated
-  if (gps.location.isUpdated()) {       //gpsSerial.available might send zeroed values
-  sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.6f,%.6f,%.2f,%.2f",
-          statusValue,              // int
-          incomingReadings.Altitude, // float
-          incomingReadings.Temp,     //  float
-          incomingReadings.velx,     //  float
-          incomingReadings.vely,     //  float
-          incomingReadings.velz,     //  float
-          gps.location.lat(),       // float (latitude)
-          gps.location.lng(),       // float (longitude)
-          gps.speed.kmph(),         // float (speed in km/h)
-          gps.altitude.meters()     // float (altitude in meters)
-  );
-}else {
-  sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f",
-          statusValue,              // int
-          incomingReadings.Altitude, //  float
-          incomingReadings.Temp,     //  float
-          incomingReadings.velx,     //  float
-          incomingReadings.vely,     //  float
-          incomingReadings.velz    //  float 
-        );
-      }
- MoteinoSerial.println(buffer);
-}
-

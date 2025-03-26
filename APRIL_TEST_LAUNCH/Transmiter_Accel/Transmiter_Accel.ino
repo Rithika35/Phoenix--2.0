@@ -46,8 +46,9 @@ int loopcount = 0;
 
 
 //for blutooth
-// REPLACE WITH THE MAC Address of your receiver 08:d1:f9:c8:e2:94
-uint8_t broadcastAddress[] = {0x08, 0xd1, 0xf9, 0xc8, 0xe2, 0x94};
+// REPLACE WITH THE MAC Address of your receiver 
+// 48:e7:29:b4:ef:04 // 03/26/2025
+uint8_t broadcastAddress[] = {0x48, 0xe7, 0x29, 0xb4, 0xef, 0x04};
 
 // Define variables to store Sensor and integration readings
 float Temperature;
