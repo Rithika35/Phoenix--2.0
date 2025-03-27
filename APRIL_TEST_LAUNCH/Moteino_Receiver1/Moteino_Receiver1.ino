@@ -4,32 +4,28 @@
 #include <SPIFlash.h>
 
 // Gateway configuration
-#define NODEID        1    // Unique ID of this gateway node
-#define NETWORKID     100  // Network ID (must match the Node)
-#define FREQUENCY     RF69_915MHZ  // Match frequency to your region
-#define ENCRYPTKEY    "TOPSECRETPASSWRD" // 16 bytes encryption key
-#define IS_RFM69HW_HCW  // Uncomment if using RFM69HW/HCW
-#define LED           9   // Moteino LED pin
-#define ENABLE_ATC    // Comment out to disable ATC
+#define NODEID        1
+#define NETWORKID     100
+#define FREQUENCY     RF69_915MHZ
+#define ENCRYPTKEY    "TOPSECRETPASSWRD"
+#define IS_RFM69HW_HCW
+#define LED           9
+#define ENABLE_ATC
+#define MAX_BUFFER    160
+#define RFM69_MAX_PAYLOAD 61
 
-// Buffer sizes
-#define MAX_BUFFER    160  // Large enough for full reassembled GPS data
-#define RFM69_MAX_PAYLOAD 61  // Max payload per packet
-
-// Initialize radio
 #ifdef ENABLE_ATC
   RFM69_ATC radio;
 #else
   RFM69 radio;
 #endif
 
-SPIFlash flash(8, 0xEF30); // Flash chip on Moteino
+SPIFlash flash(8, 0xEF30);
 
-// Variables for parsing received data
 int statusValue;
 float altitude, temp, velx, vely, velz;
 float lat, lng, speed, altitude_m;
-char fullBuffer[MAX_BUFFER];  // Buffer to reassemble split packets
+char fullBuffer[MAX_BUFFER];
 bool waitingForSecondPacket = false;
 
 void setup() {
@@ -51,39 +47,35 @@ void setup() {
   }
   
   Serial.println("Moteino Gateway Receiver Ready");
-  blinkLED(5); // Signal setup complete
+  blinkLED(5);
 }
 
 void loop() {
   if (radio.receiveDone()) {
     char packet[RFM69_MAX_PAYLOAD + 1];
     memcpy(packet, radio.DATA, radio.DATALEN);
-    packet[radio.DATALEN] = '\0'; // Null-terminate
+    packet[radio.DATALEN] = '\0';
     
-    // Blink LED to indicate packet reception
     blinkLED(2);
     
-    // Check if this is a single packet (no GPS) or part of a split packet (GPS)
     int commaCount = countCommas(packet);
     if (commaCount == 5) {
-      // Single packet (6 values, no GPS)
       strcpy(fullBuffer, packet);
+      Serial.print("Received full packet:");Serial.println(fullBuffer);
       parseAndPrintData(fullBuffer);
     } else if (commaCount < 5 && !waitingForSecondPacket) {
-      // First packet of GPS data (6 values)
       strcpy(fullBuffer, packet);
       waitingForSecondPacket = true;
     } else if (waitingForSecondPacket) {
-      // Second packet of GPS data (4 values)
-      strcat(fullBuffer, ",");  // Add the missing comma between packets
+      strcat(fullBuffer, ",");
       strcat(fullBuffer, packet);
+      Serial.print("Received full packet:");Serial.println(fullBuffer);
       parseAndPrintData(fullBuffer);
       waitingForSecondPacket = false;
     } else {
       Serial.println("Unexpected packet format");
     }
     
-    // Acknowledge the packet if requested
     if (radio.ACKRequested()) {
       radio.sendACK();
       Serial.println("ACK Sent");
@@ -91,41 +83,54 @@ void loop() {
   }
 }
 
-// Parse and print the received data
 void parseAndPrintData(char* data) {
-  bool gpsAvailable = (sscanf(data, "%d,%f,%f,%f,%f,%f,%f,%f,%f,%f",
-                              &statusValue, &altitude, &temp, &velx, &vely, &velz,
-                              &lat, &lng, &speed, &altitude_m) == 10);
+  int fields = countCommas(data) + 1;
   
-  if (gpsAvailable) {
-    // 10 values received (GPS available)
-    Serial.print("GPS Data: ");
-    Serial.print(statusValue); Serial.print(",");
-    Serial.print(altitude); Serial.print(",");
-    Serial.print(temp); Serial.print(",");
-    Serial.print(velx); Serial.print(",");
-    Serial.print(vely); Serial.print(",");
-    Serial.print(velz); Serial.print(",");
-    Serial.print(lat, 6); Serial.print(",");
-    Serial.print(lng, 6); Serial.print(",");
-    Serial.print(speed); Serial.print(",");
-    Serial.println(altitude_m);
-  } else if (sscanf(data, "%d,%f,%f,%f,%f,%f",
-                    &statusValue, &altitude, &temp, &velx, &vely, &velz) == 6) {
-    // 6 values received (no GPS)
-    Serial.print("No GPS Data: ");
-    Serial.print(statusValue); Serial.print(",");
-    Serial.print(altitude); Serial.print(",");
-    Serial.print(temp); Serial.print(",");
-    Serial.print(velx); Serial.print(",");
-    Serial.print(vely); Serial.print(",");
-    Serial.println(velz);
+  char *token = strtok(data, ",");
+  int tokenCount = 0;
+
+  while (token != NULL && tokenCount < 10) {
+    switch (tokenCount) {
+      case 0: statusValue = atoi(token); break;
+      case 1: altitude = atof(token); break;
+      case 2: temp = atof(token); break;
+      case 3: velx = atof(token); break;
+      case 4: vely = atof(token); break;
+      case 5: velz = atof(token); break;
+      case 6: lat = atof(token); break;
+      case 7: lng = atof(token); break;
+      case 8: speed = atof(token); break;
+      case 9: altitude_m = atof(token); break;
+    }
+    token = strtok(NULL, ",");
+    tokenCount++;
+  }
+
+  if (fields == 6 && tokenCount == 6) {
+    Serial.println("No GPS Data:");
+    Serial.print("Status: "); Serial.println(statusValue);
+    Serial.print("Altitude: "); Serial.println(altitude);
+    Serial.print("Temperature: "); Serial.println(temp);
+    Serial.print("Velocity X: "); Serial.println(velx);
+    Serial.print("Velocity Y: "); Serial.println(vely);
+    Serial.print("Velocity Z: "); Serial.println(velz);
+  } else if (fields == 10 && tokenCount == 10) {
+    Serial.println("GPS Data:");
+    Serial.print("Status: "); Serial.println(statusValue);
+    Serial.print("Altitude: "); Serial.println(altitude);
+    Serial.print("Temperature: "); Serial.println(temp);
+    Serial.print("Velocity X: "); Serial.println(velx);
+    Serial.print("Velocity Y: "); Serial.println(vely);
+    Serial.print("Velocity Z: "); Serial.println(velz);
+    Serial.print("Latitude: "); Serial.println(lat, 6);
+    Serial.print("Longitude: "); Serial.println(lng, 6);
+    Serial.print("Speed: "); Serial.println(speed);
+    Serial.print("GPS Altitude: "); Serial.println(altitude_m);
   } else {
     Serial.println("Invalid data format");
   }
 }
 
-// Count commas in a string
 int countCommas(char* str) {
   int count = 0;
   for (int i = 0; str[i] != '\0'; i++) {
@@ -134,7 +139,6 @@ int countCommas(char* str) {
   return count;
 }
 
-// Blink LED helper function
 void blinkLED(int times) {
   for (int i = 0; i < times; i++) {
     digitalWrite(LED, HIGH);

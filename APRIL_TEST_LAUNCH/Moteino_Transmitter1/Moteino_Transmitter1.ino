@@ -16,7 +16,7 @@
 
 // Serial configuration
 #define SERIAL_BAUD   115200
-#define MAX_BUFFER    256
+#define MAX_BUFFER    130
 #define RFM69_MAX_PAYLOAD 61  // RFM69 max data payload (after headers)
 
 // Initialize radio
@@ -63,18 +63,57 @@ void loop() {
     buffer[len] = '\0';
 
     Serial.print("Length: "); Serial.println(len);
+    Serial.println("Raw data"); Serial.println(buffer);
     
     digitalWrite(LED, HIGH);
-    
-    Serial.println("Raw data"); Serial.println(buffer);
 
     // Parse the incoming data
-    int fields = sscanf(buffer, "%d,%f,%f,%f,%f,%f,%f,%f,%f,%f",
-                           &statusValue, &altitude, &temp, &velx, &vely, &velz,
-                           &lat, &lng, &speed, &altitude_m);
-    
-    if (fields == 10) {
-      // 10 values received (GPS available)
+    // Trim buffer (remove trailing newline or spaces)
+    for (int i = len - 1; i >= 0; i--) {
+    if (buffer[i] == '\n' || buffer[i] == '\r' || buffer[i] == ' ') {
+      buffer[i] = '\0';
+      len = i;
+    } else {
+      break;
+    }
+    }
+
+    int fields = 1;
+    for (int i = 0; i < len; i++) {
+      if (buffer[i] == ',') fields++;
+    }
+
+    char *token = strtok(buffer, ",");
+    int tokenCount = 0;
+
+    while (token != NULL && tokenCount < 10) {
+      switch (tokenCount) {
+        case 0: statusValue = atoi(token); break;
+        case 1: altitude = atof(token); break;
+        case 2: temp = atof(token); break;
+        case 3: velx = atof(token); break;
+        case 4: vely = atof(token); break;
+        case 5: velz = atof(token); break;
+        case 6: lat = atof(token); break;
+        case 7: lng = atof(token); break;
+        case 8: speed = atof(token); break;
+        case 9: altitude_m = atof(token); break;
+      }
+      token = strtok(NULL, ",");
+      tokenCount++;
+    }
+
+    //gpsAvailable = (fields == 10);
+
+    if (fields == 6 && tokenCount == 6) {
+      Serial.print("No GPS Data: ");
+      Serial.print(statusValue); Serial.print(",");
+      Serial.print(altitude); Serial.print(",");
+      Serial.print(temp); Serial.print(",");
+      Serial.print(velx); Serial.print(",");
+      Serial.print(vely); Serial.print(",");
+      Serial.println(velz);
+    } else if (fields == 10 && tokenCount == 10) {
       Serial.print("GPS Data: ");
       Serial.print(statusValue); Serial.print(",");
       Serial.print(altitude); Serial.print(",");
@@ -86,23 +125,14 @@ void loop() {
       Serial.print(lng, 6); Serial.print(",");
       Serial.print(speed); Serial.print(",");
       Serial.println(altitude_m);
-    } else if (fields == 6) {
-      // 6 values received (no GPS)
-      Serial.print("No GPS Data: ");
-      Serial.print(statusValue); Serial.print(",");
-      Serial.print(altitude); Serial.print(",");
-      Serial.print(temp); Serial.print(",");
-      Serial.print(velx); Serial.print(",");
-      Serial.print(vely); Serial.print(",");
-      Serial.println(velz);
     } else {
       Serial.println("Invalid data format");
     }
-    
+      
     // Send data via RFM69
     if (len <= RFM69_MAX_PAYLOAD) {
       // Single packet (no GPS, fits in 61 bytes)
-      if (radio.sendWithRetry(GATEWAYID, buffer, len, 3, 50)) {
+      if (radio.sendWithRetry(GATEWAYID, buffer, len, 3, 500)) {
         Serial.println("Single packet sent to Gateway");
       } else {
         Serial.println("Single packet send failed");

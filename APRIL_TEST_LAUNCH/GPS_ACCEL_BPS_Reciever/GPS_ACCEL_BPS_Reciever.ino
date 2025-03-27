@@ -261,7 +261,7 @@ void loop() {
       com.logStatus = 'Y';
       
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &com, sizeof(com));
-      file = SD.open("/imu_data.csv", FILE_WRITE);
+      file = SD.open("/imu_data_withTele.csv", FILE_WRITE);
       if (file) {
         file.println("Time,sensor time,Tempature(F),Altitude(ft),preassure(hPa),x-accel,y-accel,z-accel,pitch,roll,yaw,velx, vely,velz,Latitude,Longitude,Velocity(ft/s), Altitude(m),status");
       } 
