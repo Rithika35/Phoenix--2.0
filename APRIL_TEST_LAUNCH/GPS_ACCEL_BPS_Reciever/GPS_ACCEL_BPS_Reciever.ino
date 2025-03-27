@@ -10,11 +10,23 @@
 #define TXD2 17
 #define GPS_BAUD 9600
 #define NUMREADINGS 7
+
+// Define UART pins for ESP32 to Moteino communication
+#define MOTEINO_RX_PIN 32  // ESP32 RX pin, connects to Moteino TX
+#define MOTEINO_TX_PIN 33  // ESP32 TX pin, connects to Moteino RX
+#define MOTEINO_BAUD 115200 // Baud rate for Moteino communication
+#define MOTEINO_BUFFER 128   // Buffer size for Moteino communication
+
+
 // The TinyGPS++ object
 TinyGPSPlus gps;
 
 // Create an instance of the HardwareSerial class for Serial 2
-HardwareSerial gpsSerial(2);
+HardwareSerial gpsSerial(2);  // UART2 for GPS
+HardwareSerial MoteinoSerial(1);  // UART1 for Moteino
+
+unsigned long lastMoteinoUpdate = 0;
+const unsigned long MOTEINO_UPDATE_INTERVAL = 500; // Send to Moteino every 0.5 seconds
 
 const int CS_PIN = 5; // SD card chip select
 File file;
@@ -176,6 +188,10 @@ void setup() {
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, RXD0, TXD2);
   Serial.println("Serial 2 started at 9600 baud rate");
 
+  // Start Moteino Serial with updated baud rate
+  MoteinoSerial.begin(MOTEINO_BAUD, SERIAL_8N1, MOTEINO_RX_PIN, MOTEINO_TX_PIN);
+  Serial.println("Moteino communication initialized");
+
   // Initialize the SD card
   if (!SD.begin(CS_PIN)) {
     Serial.println("SD card initialization failed!");
@@ -218,7 +234,7 @@ void setup() {
 
   Serial.println("Type 's' to start logging and 'f' to stop logging.");
 }
- 
+
 void loop() {
   HundrethSec = (count) % 10;
   TenthSec = (count/10) % 10;
@@ -227,19 +243,23 @@ void loop() {
   iHundrethSec =  incomingcount % 10;
   iTenthSec = (incomingcount/10) % 10;
   iOneSec = (incomingcount/ 100) % 10;
-  iTenSec = (incomingcount/ 1000)%6;
+  iTenSec = (incomingcount/ 1000)% 6;
   if (TimerFlag ) {
     TimerFlag = false; // Reset flag
+     // Debug timer
+    Serial.println(count);
+
     // Serial.print("T+");Serial.print(count/6000);Serial.print(":");Serial.print(TenSec);Serial.print(OneSec);Serial.print(":");Serial.print(TenthSec);Serial.print(HundrethSec);Serial.print(" ");
-    Serial.println(incomingAlt);
+    //Serial.println(incomingAlt);
     //Start or stop logging based on serial input
     // if (Serial.available() > 0) {
     //   char command = Serial.read();
+
     if (command == 's' && !logging) {
       logging = true;
-        // Send message via ESP-NOW
-        com.logStatus = 'Y';
-       
+      // Send message via ESP-NOW
+      com.logStatus = 'Y';
+      
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &com, sizeof(com));
       file = SD.open("/imu_data.csv", FILE_WRITE);
       if (file) {
@@ -256,6 +276,10 @@ void loop() {
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &com, sizeof(com));
     }
     if(liftoff == 0){
+      Serial.println("Launch Pad with timer");
+      if (count % 50 ==  0) {      // Send every 50th tick (500ms)
+      SendMoteino(0);
+      }
       if (logging ) {
         if (file) {
           //Timestamp
@@ -380,6 +404,11 @@ void loop() {
     }
   }
  // }
+  // // Flight state logic with conditional prints and SendMoteino
+  // if (liftoff == 0) {
+  //   Serial.print("Launch Pad");Serial.println(count);
+  //   SendMoteino(0);
+  //}
 }
 //function to check if apogee has been reach using pressure
 bool isApogee(float Pressure){
@@ -467,4 +496,38 @@ void PrintLiftOffTime(int counter) {
   file.print(LiftOffcount/6000);file.print(":");file.print(TenSec);file.print(OneSec);file.print(".");file.print(TenthSec);file.print(HundrethSec); file.print(",");
   file.print(incomingcount/6000);file.print(":");file.print(iTenSec);file.print(iOneSec);
   file.print(".");file.print(iTenthSec);file.print(iHundrethSec);file.print(",");
+}
+
+
+void SendMoteino(float statusValue){
+ 
+  char buffer[128];
+ // Only format and send if GPS data is updated
+  if (gps.location.isUpdated()) {       //gpsSerial.available might send zeroed values
+  sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.6f,%.6f,%.2f,%.2f",
+          statusValue,              // int
+          incomingReadings.Altitude, // float
+          incomingReadings.Temp,     //  float
+          incomingReadings.velx,     //  float
+          incomingReadings.vely,     //  float
+          incomingReadings.velz,     //  float
+          gps.location.lat(),       // float (latitude)
+          gps.location.lng(),       // float (longitude)
+          gps.speed.kmph(),         // float (speed in km/h)
+          gps.altitude.meters()     // float (altitude in meters)
+  );
+}else {
+  sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f",
+          statusValue,              // int
+          incomingReadings.Altitude, //  float
+          incomingReadings.Temp,     //  float
+          incomingReadings.velx,     //  float
+          incomingReadings.vely,     //  float
+          incomingReadings.velz     //  float 
+       );
+      }
+ MoteinoSerial.println(buffer);
+ MoteinoSerial.flush();
+ Serial.println("Data sent to Moteino:");
+ Serial.println(buffer);
 }

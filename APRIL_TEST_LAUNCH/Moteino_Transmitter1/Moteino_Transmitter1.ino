@@ -16,7 +16,7 @@
 
 // Serial configuration
 #define SERIAL_BAUD   115200
-#define MAX_BUFFER    120
+#define MAX_BUFFER    256
 #define RFM69_MAX_PAYLOAD 61  // RFM69 max data payload (after headers)
 
 // Initialize radio
@@ -61,15 +61,19 @@ void loop() {
     char buffer[MAX_BUFFER];
     int len = Serial.readBytesUntil('\n', buffer, MAX_BUFFER - 1);
     buffer[len] = '\0';
+
+    Serial.print("Length: "); Serial.println(len);
     
     digitalWrite(LED, HIGH);
     
+    Serial.println("Raw data"); Serial.println(buffer);
+
     // Parse the incoming data
-    gpsAvailable = (sscanf(buffer, "%d,%f,%f,%f,%f,%f,%f,%f,%f,%f",
+    int fields = sscanf(buffer, "%d,%f,%f,%f,%f,%f,%f,%f,%f,%f",
                            &statusValue, &altitude, &temp, &velx, &vely, &velz,
-                           &lat, &lng, &speed, &altitude_m) == 10);
+                           &lat, &lng, &speed, &altitude_m);
     
-    if (gpsAvailable) {
+    if (fields == 10) {
       // 10 values received (GPS available)
       Serial.print("GPS Data: ");
       Serial.print(statusValue); Serial.print(",");
@@ -82,8 +86,7 @@ void loop() {
       Serial.print(lng, 6); Serial.print(",");
       Serial.print(speed); Serial.print(",");
       Serial.println(altitude_m);
-    } else if (sscanf(buffer, "%d,%f,%f,%f,%f,%f",
-                      &statusValue, &altitude, &temp, &velx, &vely, &velz) == 6) {
+    } else if (fields == 6) {
       // 6 values received (no GPS)
       Serial.print("No GPS Data: ");
       Serial.print(statusValue); Serial.print(",");
