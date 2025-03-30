@@ -4,6 +4,7 @@
 #include <SD.h>
 #include <Wire.h>
 #include <TinyGPS++.h>
+#include "CRC16.h"
 
 // Define the RX and TX pins for Serial 2
 #define RXD0 16
@@ -20,6 +21,7 @@
 
 // The TinyGPS++ object
 TinyGPSPlus gps;
+CRC16 crc;
 
 // Create an instance of the HardwareSerial class for Serial 2
 HardwareSerial gpsSerial(2);  // UART2 for GPS
@@ -153,6 +155,7 @@ void OnDataRecv(const uint32_t * mac, const uint32_t *incomingData, int len) {
   memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
   // Serial.print("Bytes received: ");
   // Serial.println(len);
+  // Serial.println(*incomingData);
   incomingTemp = incomingReadings.Temp;
   incomingAlt = incomingReadings.Altitude;
   incomingPres = incomingReadings.Pres;
@@ -250,7 +253,7 @@ void loop() {
     Serial.println(count);
 
     // Serial.print("T+");Serial.print(count/6000);Serial.print(":");Serial.print(TenSec);Serial.print(OneSec);Serial.print(":");Serial.print(TenthSec);Serial.print(HundrethSec);Serial.print(" ");
-    //Serial.println(incomingAlt);
+    Serial.println(incomingReadings.Altitude);
     //Start or stop logging based on serial input
     // if (Serial.available() > 0) {
     //   char command = Serial.read();
@@ -277,7 +280,7 @@ void loop() {
     }
     if(liftoff == 0){
       Serial.println("Launch Pad with timer");
-      if (count % 50 ==  0) {      // Send every 50th tick (500ms)
+      if (count % 50 ==  0) {      // Send every 50th tick (500ms =0.5s)
       SendMoteino(0);
       }
       if (logging ) {
@@ -499,35 +502,34 @@ void PrintLiftOffTime(int counter) {
 }
 
 
-void SendMoteino(float statusValue){
- 
+void SendMoteino(float statusValue) {
   char buffer[128];
- // Only format and send if GPS data is updated
-  if (gps.location.isUpdated()) {       //gpsSerial.available might send zeroed values
-  sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.6f,%.6f,%.2f,%.2f",
-          statusValue,              // int
-          incomingReadings.Altitude, // float
-          incomingReadings.Temp,     //  float
-          incomingReadings.velx,     //  float
-          incomingReadings.vely,     //  float
-          incomingReadings.velz,     //  float
-          gps.location.lat(),       // float (latitude)
-          gps.location.lng(),       // float (longitude)
-          gps.speed.kmph(),         // float (speed in km/h)
-          gps.altitude.meters()     // float (altitude in meters)
-  );
-}else {
-  sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f",
-          statusValue,              // int
-          incomingReadings.Altitude, //  float
-          incomingReadings.Temp,     //  float
-          incomingReadings.velx,     //  float
-          incomingReadings.vely,     //  float
-          incomingReadings.velz     //  float 
-       );
-      }
- MoteinoSerial.println(buffer);
- MoteinoSerial.flush();
- Serial.println("Data sent to Moteino:");
- Serial.println(buffer);
+  char packet[134]; // Extra space for ",XXXX\n"
+
+  // Format data based on GPS availability
+  if (gps.location.isUpdated()) {
+    sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f,%.6f,%.6f,%.2f,%.2f",
+            (int)statusValue, incomingReadings.Altitude, incomingReadings.Temp,
+            incomingReadings.pitch, incomingReadings.roll, incomingReadings.velz,
+            gps.location.lat(), gps.location.lng(), gps.speed.kmph(),
+            gps.altitude.meters());
+  } else {
+    sprintf(buffer, "%d,%.2f,%.2f,%.2f,%.2f,%.2f",
+            (int)statusValue, incomingReadings.Altitude, incomingReadings.Temp,
+            incomingReadings.pitch, incomingReadings.roll, incomingReadings.velz);
+  }
+
+  // Calculate CRC
+  crc.restart();
+  crc.add((uint8_t*)buffer, strlen(buffer));
+  uint16_t crcValue = crc.calc();
+
+  // Append CRC and newline
+  sprintf(packet, "%s,%04X\n", buffer, crcValue);
+
+  // Send to Moteino
+  MoteinoSerial.println(packet);
+  MoteinoSerial.flush();
+  Serial.print("Data sent to Moteino: ");
+  Serial.println(packet);
 }

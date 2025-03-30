@@ -2,8 +2,8 @@
 #include <RFM69.h>
 #include <SPI.h>
 #include <SPIFlash.h>
+#include "CRC16.h"
 
-// Gateway configuration
 #define NODEID        1
 #define NETWORKID     100
 #define FREQUENCY     RF69_915MHZ
@@ -21,31 +21,27 @@
 #endif
 
 SPIFlash flash(8, 0xEF30);
+CRC16 crc;
 
 int statusValue;
 float altitude, temp, velx, vely, velz;
 float lat, lng, speed, altitude_m;
 char fullBuffer[MAX_BUFFER];
-bool waitingForSecondPacket = false;
+bool waitingForMore = false;
 
 void setup() {
   pinMode(LED, OUTPUT);
   Serial.begin(115200);
-  
   radio.initialize(FREQUENCY, NODEID, NETWORKID);
 #ifdef IS_RFM69HW_HCW
   radio.setHighPower();
 #endif
 #ifdef ENABLE_ATC
   radio.enableAutoPower(-75);
-  Serial.println("ATC Enabled - Auto Transmission Control");
+  Serial.println("ATC Enabled");
 #endif
   radio.encrypt(ENCRYPTKEY);
-  
-  if (flash.initialize()) {
-    flash.sleep();
-  }
-  
+  if (flash.initialize()) flash.sleep();
   Serial.println("Moteino Gateway Receiver Ready");
   blinkLED(5);
 }
@@ -57,25 +53,48 @@ void loop() {
     packet[radio.DATALEN] = '\0';
     
     blinkLED(2);
-    
-    int commaCount = countCommas(packet);
-    if (commaCount == 5) {
+
+    char* crcPos = strrchr(packet, ',');
+    if (!crcPos || strlen(crcPos + 1) != 4) {
+      Serial.println("Invalid CRC format - packet discarded");
+      if (radio.ACKRequested()) radio.sendACK();
+      return;
+    }
+
+    *crcPos = '\0';
+    uint16_t receivedCRC;
+    sscanf(crcPos + 1, "%4X", &receivedCRC);
+    crc.restart();
+    crc.add((uint8_t*)packet, strlen(packet));
+    if (crc.calc() != receivedCRC) {
+      Serial.println("RFM69 CRC check failed - packet discarded");
+      if (radio.ACKRequested()) radio.sendACK();
+      return;
+    }
+
+    int dataLen = strlen(packet);
+    if (dataLen <= 56 && !waitingForMore) {
       strcpy(fullBuffer, packet);
-      Serial.print("Received full packet:");Serial.println(fullBuffer);
+      Serial.print("Received full packet: "); Serial.println(fullBuffer);
       parseAndPrintData(fullBuffer);
-    } else if (commaCount < 5 && !waitingForSecondPacket) {
+    } else if (!waitingForMore) {
       strcpy(fullBuffer, packet);
-      waitingForSecondPacket = true;
-    } else if (waitingForSecondPacket) {
+      waitingForMore = true;
+    } else {
       strcat(fullBuffer, ",");
       strcat(fullBuffer, packet);
-      Serial.print("Received full packet:");Serial.println(fullBuffer);
-      parseAndPrintData(fullBuffer);
-      waitingForSecondPacket = false;
-    } else {
-      Serial.println("Unexpected packet format");
+      if (strlen(fullBuffer) + 5 >= MAX_BUFFER) {
+        Serial.println("Buffer overflow - resetting");
+        waitingForMore = false;
+      } else if (dataLen <= 56) {
+        Serial.print("Received full packet: "); Serial.println(fullBuffer);
+        parseAndPrintData(fullBuffer);
+        waitingForMore = false;
+      } else {
+        waitingForMore = true;
+      }
     }
-    
+
     if (radio.ACKRequested()) {
       radio.sendACK();
       Serial.println("ACK Sent");
@@ -84,11 +103,12 @@ void loop() {
 }
 
 void parseAndPrintData(char* data) {
-  int fields = countCommas(data) + 1;
-  
+  int fields = 0;
+  for (int i = 0; data[i]; i++) if (data[i] == ',') fields++;
+  fields++;
+
   char *token = strtok(data, ",");
   int tokenCount = 0;
-
   while (token != NULL && tokenCount < 10) {
     switch (tokenCount) {
       case 0: statusValue = atoi(token); break;
@@ -129,14 +149,6 @@ void parseAndPrintData(char* data) {
   } else {
     Serial.println("Invalid data format");
   }
-}
-
-int countCommas(char* str) {
-  int count = 0;
-  for (int i = 0; str[i] != '\0'; i++) {
-    if (str[i] == ',') count++;
-  }
-  return count;
 }
 
 void blinkLED(int times) {
