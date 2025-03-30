@@ -14,7 +14,7 @@
 #define ENABLE_ATC
 #define ATC_RSSI      -75
 #define SERIAL_BAUD   115200
-#define MAX_BUFFER    130
+#define MAX_BUFFER    70
 #define RFM69_MAX_PAYLOAD 61
 
 #ifdef ENABLE_ATC
@@ -50,16 +50,22 @@ void setup() {
 }
 
 void loop() {
+  if (Serial.available() > 40) {
+    Serial.println("Warning: Serial buffer filling up!");
+  }
   while (Serial.available() > 0) {
     char c = Serial.read();
     if (c == '\n') {
       serialBuffer[serialIndex] = '\0';
-      if (verifyUARTCRC(serialBuffer)) {
+      Serial.print("Received raw: '"); // Debug raw buffer
+      Serial.print(serialBuffer);
+      Serial.println("'");
+      //if (verifyUARTCRC(serialBuffer)) {
         parseAndPrintData(serialBuffer); // Print data before sending
         processAndSend(serialBuffer);
-      } else {
-        Serial.println("UART CRC failed - packet discarded");
-      }
+      // } else {
+      //   Serial.println("UART CRC failed - packet discarded");
+      // }
       serialIndex = 0;
     } else if (serialIndex < MAX_BUFFER - 1) {
       serialBuffer[serialIndex++] = c;
@@ -71,15 +77,30 @@ void loop() {
 }
 
 bool verifyUARTCRC(char* buffer) {
+  // Remove trailing newline if present
+  int len = strlen(buffer);
+  if (len > 0 && buffer[len - 1] == '\n') {
+    buffer[len - 1] = '\0';
+  }
+
   char* crcPos = strrchr(buffer, ',');
-  if (!crcPos || strlen(crcPos + 1) != 4) return false;
+  if (!crcPos || strlen(crcPos + 1) != 4) {
+    Serial.println("Invalid CRC format"); // Debug
+    return false;
+  }
 
   *crcPos = '\0'; // Split data and CRC
   uint16_t receivedCRC;
   sscanf(crcPos + 1, "%4X", &receivedCRC);
   crc.restart();
   crc.add((uint8_t*)buffer, strlen(buffer));
-  return (crc.calc() == receivedCRC);
+  uint16_t calculatedCRC = crc.calc();
+
+  // Debug CRC values
+  Serial.print("Calculated CRC: "); Serial.println(calculatedCRC, HEX);
+  Serial.print("Received CRC: "); Serial.println(receivedCRC, HEX);
+
+  return (calculatedCRC == receivedCRC);
 }
 
 void processAndSend(char* buffer) {
@@ -185,8 +206,10 @@ void parseAndPrintData(char* data) {
     Serial.print("Longitude: "); Serial.println(lng, 6);
     Serial.print("Speed: "); Serial.println(speed);
     Serial.print("GPS Altitude: "); Serial.println(altitude_m);
-  } else {
-    Serial.println("Invalid data format");
+  } 
+  else {
+    Serial.print("Merged packet data:");
+    Serial.println(data);
   }
 }
 

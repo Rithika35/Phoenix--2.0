@@ -56,7 +56,8 @@ void loop() {
 
     char* crcPos = strrchr(packet, ',');
     if (!crcPos || strlen(crcPos + 1) != 4) {
-      Serial.println("Invalid CRC format - packet discarded");
+      Serial.println("Invalid CRC format - packet discarded:");
+      Serial.println(packet);
       if (radio.ACKRequested()) radio.sendACK();
       return;
     }
@@ -67,7 +68,8 @@ void loop() {
     crc.restart();
     crc.add((uint8_t*)packet, strlen(packet));
     if (crc.calc() != receivedCRC) {
-      Serial.println("RFM69 CRC check failed - packet discarded");
+      Serial.println("RFM69 CRC check failed - packet discarded:");
+      Serial.println(packet);
       if (radio.ACKRequested()) radio.sendACK();
       return;
     }
@@ -147,7 +149,8 @@ void parseAndPrintData(char* data) {
     Serial.print("Speed: "); Serial.println(speed);
     Serial.print("GPS Altitude: "); Serial.println(altitude_m);
   } else {
-    Serial.println("Invalid data format");
+    Serial.print("Merged packet data:");
+    Serial.println(data);
   }
 }
 

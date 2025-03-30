@@ -253,7 +253,7 @@ void loop() {
     Serial.println(count);
 
     // Serial.print("T+");Serial.print(count/6000);Serial.print(":");Serial.print(TenSec);Serial.print(OneSec);Serial.print(":");Serial.print(TenthSec);Serial.print(HundrethSec);Serial.print(" ");
-    Serial.println(incomingReadings.Altitude);
+    Serial.println(incomingReadings.roll);
     //Start or stop logging based on serial input
     // if (Serial.available() > 0) {
     //   char command = Serial.read();
@@ -503,8 +503,8 @@ void PrintLiftOffTime(int counter) {
 
 
 void SendMoteino(float statusValue) {
-  char buffer[128];
-  char packet[134]; // Extra space for ",XXXX\n"
+  char buffer[128]={0}; // Buffer to hold formatted data
+  char packet[134]={0}; // Extra space for ",XXXX\n"
 
   // Format data based on GPS availability
   if (gps.location.isUpdated()) {
@@ -519,16 +519,17 @@ void SendMoteino(float statusValue) {
             incomingReadings.pitch, incomingReadings.roll, incomingReadings.velz);
   }
 
-  // Calculate CRC
-  crc.restart();
-  crc.add((uint8_t*)buffer, strlen(buffer));
-  uint16_t crcValue = crc.calc();
+  // // Calculate CRC
+  // crc.restart();
+  // crc.add((uint8_t*)buffer, strlen(buffer));
+  // uint16_t crcValue = crc.calc();
 
   // Append CRC and newline
-  sprintf(packet, "%s,%04X\n", buffer, crcValue);
-
+  //sprintf(packet, "%s,%04X\n", buffer, crcValue);
+  sprintf(packet, "%s\n", buffer);
+  
   // Send to Moteino
-  MoteinoSerial.println(packet);
+  MoteinoSerial.print(packet);
   MoteinoSerial.flush();
   Serial.print("Data sent to Moteino: ");
   Serial.println(packet);
