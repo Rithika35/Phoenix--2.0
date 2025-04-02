@@ -1,0 +1,168 @@
+// Prerequisites:
+// ## Hardware:
+//
+// #### Moteino with RFM69 radio module.
+// #### I2C LCD (e.g., 16x2 or 20x4) connected to:
+// ####### SDA → Moteino A4
+// ####### SCL → Moteino A5
+// ####### VCC → 3.3V or 5V (match your Moteino’s voltage)
+// ####### GND → GND
+// #### Battery or power supply (with capacitors as recommended earlier).
+//
+// ## Libraries:
+// #### RFM69 (and RFM69_ATC if using auto power control).
+// #### SPI (for RFM69).
+// #### Wire (for I2C).
+// #### LiquidCrystal_I2C (for I2C LCD control). Install via Arduino IDE Library Manager.
+
+
+#include <RFM69_ATC.h>
+#include <RFM69.h>
+#include <SPI.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// RFM69 Configuration
+#define NODEID        1    // Gateway ID (receiver)
+#define NETWORKID     100
+#define FREQUENCY     RF69_915MHZ
+#define ENCRYPTKEY    "TOPSECRETPASSWRD"
+#define IS_RFM69HW_HCW
+#define ENABLE_ATC
+#define ATC_RSSI      -75
+#define LED           9
+
+// LCD Configuration
+#define LCD_ADDRESS   0x27  // Common I2C address for PCF8574 (check yours with I2C scanner)
+#define LCD_COLUMNS   16    // Adjust to 20 if using 20x4 LCD
+#define LCD_ROWS      2     // Adjust to 4 if using 20x4 LCD
+
+#ifdef ENABLE_ATC
+  RFM69_ATC radio;
+#else
+  RFM69 radio;
+#endif
+
+// Initialize LCD object
+LiquidCrystal_I2C lcd(LCD_ADDRESS, LCD_COLUMNS, LCD_ROWS);
+
+// Received data variables
+int statusValue;
+float altitude, temp, pitch, roll, velz;
+float lat, lng, speed, altitude_m;
+char receivedBuffer[140]; // Match MAX_BUFFER from TX
+
+void setup() {
+  pinMode(LED, OUTPUT);
+  
+  // Initialize RFM69
+  radio.initialize(FREQUENCY, NODEID, NETWORKID);
+#ifdef IS_RFM69HW_HCW
+  radio.setHighPower();
+#endif
+#ifdef ENABLE_ATC
+  radio.enableAutoPower(ATC_RSSI);
+#endif
+  radio.encrypt(ENCRYPTKEY);
+
+  // Initialize LCD
+  lcd.init();          // Initialize I2C LCD
+  lcd.backlight();     // Turn on backlight
+  lcd.setCursor(0, 0); // Set cursor to top-left
+  lcd.print("Moteino RX Ready");
+  lcd.setCursor(0, 1);
+  lcd.print("Waiting for data");
+  delay(2000); // Show startup message for 2 seconds
+  lcd.clear();
+}
+
+void loop() {
+  if (radio.receiveDone()) {
+    digitalWrite(LED, HIGH); // Indicate reception
+    
+    // Check if data is available and fits buffer
+    if (radio.DATALEN > 0 && radio.DATALEN < sizeof(receivedBuffer)) {
+      memcpy(receivedBuffer, radio.DATA, radio.DATALEN);
+      receivedBuffer[radio.DATALEN] = '\0'; // Null-terminate
+      
+      // Parse and display data
+      parseAndDisplayData(receivedBuffer);
+    }
+    
+    // Acknowledge if requested
+    if (radio.ACKRequested()) {
+      radio.sendACK();
+    }
+    
+    digitalWrite(LED, LOW);
+  }
+}
+
+void parseAndDisplayData(char* data) {
+  // Count fields
+  int fields = 0;
+  for (int i = 0; data[i]; i++) if (data[i] == ',') fields++;
+  fields++; // Number of tokens
+
+  // Temporary buffer for parsing
+  char tempBuffer[140];
+  strcpy(tempBuffer, data);
+  char *token = strtok(tempBuffer, ",");
+  int tokenCount = 0;
+
+  // Parse tokens into variables
+  while (token != NULL && tokenCount < 10) {
+    switch (tokenCount) {
+      case 0: statusValue = atoi(token); break;
+      case 1: altitude = atof(token); break;
+      case 2: temp = atof(token); break;
+      case 3: pitch = atof(token); break;
+      case 4: roll = atof(token); break;
+      case 5: velz = atof(token); break;
+      case 6: lat = atof(token); break;
+      case 7: lng = atof(token); break;
+      case 8: speed = atof(token); break;
+      case 9: altitude_m = atof(token); break;
+    }
+    token = strtok(NULL, ",");
+    tokenCount++;
+  }
+
+  // Display on LCD based on packet type
+  lcd.clear(); // Clear previous display
+  if (fields == 6) { // No GPS data
+    lcd.setCursor(0, 0);
+    lcd.print("S:");
+    lcd.print(statusValue);
+    lcd.print(" A:");
+    lcd.print(altitude, 1); // 1 decimal for brevity
+    
+    lcd.setCursor(0, 1);
+    lcd.print("T:");
+    lcd.print(temp, 1);
+    lcd.print(" R:");
+    lcd.print(roll, 1);
+  } else if (fields == 10) { // With GPS data
+    lcd.setCursor(0, 0);
+    lcd.print("A:");
+    lcd.print(altitude, 1);
+    lcd.print(" T:");
+    lcd.print(temp, 1);
+    
+    lcd.setCursor(0, 1);
+    lcd.print("Lat:");
+    lcd.print(lat, 4); // 4 decimals for GPS
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("Invalid Packet");
+  }
+}
+
+void blinkLED(int times) {
+  for (int i = 0; i < times; i++) {
+    digitalWrite(LED, HIGH);
+    delay(200);
+    digitalWrite(LED, LOW);
+    delay(200);
+  }
+}

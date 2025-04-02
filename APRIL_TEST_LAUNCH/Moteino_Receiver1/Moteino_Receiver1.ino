@@ -141,9 +141,9 @@ void parseAndPrintData(char* data) {
     Serial.print("Status: "); Serial.println(statusValue);
     Serial.print("Altitude: "); Serial.println(altitude);
     Serial.print("Temperature: "); Serial.println(temp);
-    Serial.print("Velocity X: "); Serial.println(velx);
-    Serial.print("Velocity Y: "); Serial.println(vely);
-    Serial.print("Velocity Z: "); Serial.println(velz);
+    Serial.print("Pitch: "); Serial.println(velx);
+    Serial.print("Roll: "); Serial.println(vely);
+    Serial.print("Yaw: "); Serial.println(velz);
     Serial.print("Latitude: "); Serial.println(lat, 6);
     Serial.print("Longitude: "); Serial.println(lng, 6);
     Serial.print("Speed: "); Serial.println(speed);

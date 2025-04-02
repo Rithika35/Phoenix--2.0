@@ -14,7 +14,7 @@
 #define ENABLE_ATC
 #define ATC_RSSI      -75
 #define SERIAL_BAUD   115200
-#define MAX_BUFFER    70
+#define MAX_BUFFER    140
 #define RFM69_MAX_PAYLOAD 61
 
 #ifdef ENABLE_ATC
