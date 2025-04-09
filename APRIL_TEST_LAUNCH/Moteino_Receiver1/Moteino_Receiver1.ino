@@ -148,23 +148,23 @@ void parseAndPrintData(char* data) {
 
     Serial.print("Altitude: "); Serial.println(altitude);
     Serial.print("Temperature: "); Serial.println(temp);
-    Serial.print("Velocity X: "); Serial.println(velx);
-    Serial.print("Velocity Y: "); Serial.println(vely);
-    Serial.print("Velocity Z: "); Serial.println(velz);
+    Serial.print("Pitch: "); Serial.println(velx);
+    Serial.print("Roll: "); Serial.println(vely);
+    Serial.print("Yaw: "); Serial.println(velz);
   } else if (fields == 10 && tokenCount == 10) {
     Serial.println("GPS Data:");
     switch (statusValue) {
-      case 0: Serial.println("Statement 1"); break;
-      case 1: Serial.println("Statement 2"); break;
-      case 2: Serial.println("Statement 3"); break;
-      case 3: Serial.println("Statement 4"); break;
-      case 4: Serial.println("Statement 5"); break;
-      case 5: Serial.println("Statement 6"); break;
-      case 6: Serial.println("Statement 7"); break;
-      case 7: Serial.println("Statement 8"); break;
-      case 8: Serial.println("Statement 9"); break;
-      case 9: Serial.println("Statement 10"); break;
-      case 10: Serial.println("Statement 11"); break;
+      case 0: Serial.println("Launch Pad"); break;
+      case 1: Serial.println("Lift Off!"); break;
+      case 2: Serial.println("Lockout period over"); break;
+      case 3: Serial.println("Lockout Period"); break;
+      case 4: Serial.println("Apogee Detected!"); break;
+      case 5: Serial.println("Looking for apogee.."); break;
+      case 6: Serial.println("Initiator Off"); break;
+      case 7: Serial.println("Pumps Off"); break;
+      case 8: Serial.println("Payload Deployed"); break;
+      case 9: Serial.println("Touchdown"); break;
+      case 10: Serial.println("..."); break;
       default: Serial.println("Unknown status"); break;
     }
     Serial.print("Altitude: "); Serial.println(altitude);
