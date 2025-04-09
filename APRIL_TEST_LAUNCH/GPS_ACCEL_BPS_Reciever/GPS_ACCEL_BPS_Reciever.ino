@@ -29,6 +29,7 @@ HardwareSerial MoteinoSerial(1);  // UART1 for Moteino
 
 unsigned long lastMoteinoUpdate = 0;
 const unsigned long MOTEINO_UPDATE_INTERVAL = 500; // Send to Moteino every 0.5 seconds
+int tk = 50; // Timer tick interval in milliseconds
 
 const int CS_PIN = 5; // SD card chip select
 File file;
@@ -279,8 +280,8 @@ void loop() {
       esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &com, sizeof(com));
     }
     if(liftoff == 0){
-      Serial.println("Launch Pad with timer");
-      if (count % 50 ==  0) {      // Send every 50th tick (500ms =0.5s)
+      Serial.println("Launch Pad");
+      if (count % tk ==  0) {      // Send every 50th tick (500ms =0.5s)
       SendMoteino(0);
       }
       if (logging ) {
@@ -307,6 +308,7 @@ void loop() {
           file.print("Lift Off"); file.print(",");
           file.println();
           file.flush();
+          SendMoteino(1);
         }
       }  
     }
@@ -321,11 +323,15 @@ void loop() {
             lockout = 0;
             file.println();
             file.flush(); 
+            SendMoteino(2);
           }
           else{
             file.print("LockOut Period"); file.print(",");
             file.println();
             file.flush(); 
+            if (count % tk ==  0) {      // Send every 50th tick (500ms =0.5s)
+              SendMoteino(3);
+              }
           }
         }
       }    
@@ -347,11 +353,15 @@ void loop() {
             // digitalWrite(Initiator, HIGH);
             file.println();
             file.flush(); 
+            SendMoteino(4);
           }
           else{
             file.print("Looking for apogee");
             file.println();
             file.flush(); 
+            if (count % tk ==  0) {      // Send every 50th tick (500ms =0.5s)
+              SendMoteino(5);
+              }
           }
         }
       }
@@ -361,6 +371,9 @@ void loop() {
       
       PrintLiftOffTime(count);
       PrintMeassurments();
+      if (count % tk ==  0) {      // Send every 50th tick (500ms =0.5s)
+        SendMoteino(6);
+        }
       AfterApogee = LiftOffcount - Apogeecount;
       // int solenoidcountTM = (AfterApogee) % 10;
       // int solenoidcountH = (AfterApogee/10) % 10;
@@ -374,6 +387,7 @@ void loop() {
         InitiatorOn = 0;
         file.println();
         file.flush(); 
+        SendMoteino(7);
       }
       //turn off solenoid valve
       else if((TurnOffValve == 1) && (Draincount < AfterApogee)){
@@ -384,6 +398,7 @@ void loop() {
         DroneDeploy = 1;//Ready to search drone deployment altitude
         file.println();
         file.flush(); 
+        SendMoteino(8);
       }
       //deploy payload
       else if((incomingAlt < DroneDeployment) && (DroneDeploy ==1)){   
@@ -393,6 +408,7 @@ void loop() {
         TouchDown = 1;
         file.println();
         file.flush(); 
+        SendMoteino(9);
       }  
       //end program
       else if((incomingAlt < Landing) && (TouchDown ==1)){
@@ -400,18 +416,16 @@ void loop() {
         TouchDown = 0;
         file.println();
         file.flush(); 
+        if (count % tk ==  0) {      // Send every 50th tick (500ms =0.5s)
+          SendMoteino(10);
+          } 
         while(1){};
       }else
       file.println();
       file.flush(); 
+      SendMoteino(11);
     }
   }
- // }
-  // // Flight state logic with conditional prints and SendMoteino
-  // if (liftoff == 0) {
-  //   Serial.print("Launch Pad");Serial.println(count);
-  //   SendMoteino(0);
-  //}
 }
 //function to check if apogee has been reach using pressure
 bool isApogee(float Pressure){
